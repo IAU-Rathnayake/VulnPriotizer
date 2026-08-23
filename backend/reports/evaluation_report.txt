@@ -1,0 +1,48 @@
+VULNPRIORITIZER EVALUATION REPORT
+=================================
+
+RANDOM FOREST RESULTS
+---------------------
+Accuracy: 0.9750
+Precision: 0.9752
+Recall: 0.9750
+F1 Score: 0.9750
+
+CLASSIFICATION REPORT
+---------------------
+              precision    recall  f1-score   support
+
+        High       0.94      1.00      0.97        16
+      Medium       0.97      0.96      0.97        81
+         Low       0.98      0.98      0.98       103
+
+    accuracy                           0.97       200
+   macro avg       0.97      0.98      0.97       200
+weighted avg       0.98      0.97      0.97       200
+
+
+METHOD COMPARISON
+-----------------
+                 Method  Accuracy  Precision  Recall  F1 Score
+          Random Forest     0.975   0.975169   0.975  0.974998
+          CVSS Baseline     0.875   0.880729   0.875  0.864683
+Exploitability Baseline     0.505   0.462252   0.505  0.482380
+           Age Baseline     0.080   0.006400   0.080  0.011852
+ Combined Rule Baseline     0.425   0.762372   0.425  0.272026
+
+TOP FEATURE IMPORTANCES
+-----------------------
+1. cvss_score: 0.235745
+2. attack_vector_NETWORK: 0.150317
+3. severity_MEDIUM: 0.111054
+4. severity_HIGH: 0.110703
+5. privileges_required_NONE: 0.100011
+6. attack_vector_LOCAL: 0.079893
+7. privileges_required_LOW: 0.072340
+8. vulnerability_age_days: 0.025624
+9. severity_CRITICAL: 0.025031
+10. weakness_count: 0.019730
+
+INTERPRETATION NOTE
+-------------------
+These feature importance values show which inputs the fitted Random Forest used most when splitting the training data. They do not prove causation.
