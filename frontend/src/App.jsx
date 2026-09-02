@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getDashboard } from "./services/api";
 
 import {
   Activity,
@@ -220,7 +221,7 @@ function VulnerabilityTable({ data, onSelect }) {
 }
 
 
-function Dashboard({ data, onSelect }) {
+function Dashboard({ data, stats, onSelect }) {
   const high = data.filter(
     (item) => item.priority === "High"
   ).length;
@@ -262,34 +263,49 @@ function Dashboard({ data, onSelect }) {
     <>
       <div className="stats-grid">
         <StatCard
-          title="Total Vulnerabilities"
-          value={data.length}
-          color="#41c7ff"
-        />
+  title="Total Vulnerabilities"
+  value={
+    stats?.total_vulnerabilities ??
+    data.length
+  }
+  color="#41c7ff"
+/>
 
         <StatCard
-          title="High Priority"
-          value={high}
-          color="#ff4d67"
-        />
+  title="High Priority"
+  value={
+    stats?.high_priority ??
+    high
+  }
+  color="#ff4d67"
+/>
 
         <StatCard
-          title="Medium Priority"
-          value={medium}
-          color="#f5c451"
-        />
+  title="Medium Priority"
+  value={
+    stats?.medium_priority ??
+    medium
+  }
+  color="#f5c451"
+/>
 
         <StatCard
-          title="Low Priority"
-          value={low}
-          color="#31d598"
-        />
+  title="Low Priority"
+  value={
+    stats?.low_priority ??
+    low
+  }
+  color="#31d598"
+/>
 
         <StatCard
-          title="Average Risk"
-          value={averageRisk}
-          color="#a78bfa"
-        />
+  title="Average Risk"
+  value={
+    stats?.average_risk ??
+    averageRisk
+  }
+  color="#a78bfa"
+/>
       </div>
 
       <div className="chart-grid">
@@ -737,6 +753,22 @@ export default function App() {
   const [activePage, setActivePage] =
     useState("dashboard");
 
+
+  const [dashboardStats, setDashboardStats] =
+  useState(null);
+
+useEffect(() => {
+  getDashboard()
+    .then((data) => {
+      console.log("Dashboard Data:", data);
+      setDashboardStats(data);
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+}, []);
+
+
   const [
     selectedVulnerability,
     setSelectedVulnerability,
@@ -777,11 +809,12 @@ export default function App() {
     }
 
     return (
-      <Dashboard
-        data={vulnerabilities}
-        onSelect={openVulnerability}
-      />
-    );
+  <Dashboard
+    data={vulnerabilities}
+    stats={dashboardStats}
+    onSelect={openVulnerability}
+  />
+);
   }
 
   const pageTitle =
@@ -792,8 +825,9 @@ export default function App() {
         )?.label || "Dashboard";
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
+  <div className="app-layout">
+
+    <aside className="sidebar">
         <div className="brand">
           <ShieldAlert size={27} />
 
@@ -858,8 +892,8 @@ export default function App() {
         </header>
 
         <div className="page">
-          {renderCurrentPage()}
-        </div>
+  {renderCurrentPage()}
+</div>
       </main>
     </div>
   );
