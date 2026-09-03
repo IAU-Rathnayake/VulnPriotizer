@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { getDashboard } from "./services/api";
+
+import {
+  getDashboard,
+  getVulnerabilities,
+} from "./services/api";
 
 import {
   Activity,
+  AlertCircle,
   BarChart3,
   LayoutDashboard,
   RefreshCw,
@@ -25,73 +30,9 @@ import {
 } from "recharts";
 
 
-const vulnerabilities = [
-  {
-    cveId: "CVE-2024-24576",
-    description:
-      "Critical vulnerability that may allow remote code execution.",
-    cvss: 10.0,
-    severity: "CRITICAL",
-    priority: "High",
-    riskScore: 96,
-    confidence: 97,
-    attackVector: "NETWORK",
-    privilegesRequired: "NONE",
-    userInteraction: "NONE",
-    weaknessCount: 2,
-    referenceCount: 18,
-    published: "2024-01-30",
-  },
-  {
-    cveId: "CVE-2024-29022",
-    description:
-      "Network-accessible vulnerability requiring urgent remediation.",
-    cvss: 8.8,
-    severity: "HIGH",
-    priority: "High",
-    riskScore: 86,
-    confidence: 94,
-    attackVector: "NETWORK",
-    privilegesRequired: "LOW",
-    userInteraction: "NONE",
-    weaknessCount: 1,
-    referenceCount: 12,
-    published: "2024-03-12",
-  },
-  {
-    cveId: "CVE-2024-3384",
-    description:
-      "High-severity vulnerability with moderate exploitation risk.",
-    cvss: 7.5,
-    severity: "HIGH",
-    priority: "Medium",
-    riskScore: 65,
-    confidence: 91,
-    attackVector: "LOCAL",
-    privilegesRequired: "LOW",
-    userInteraction: "REQUIRED",
-    weaknessCount: 1,
-    referenceCount: 8,
-    published: "2024-03-28",
-  },
-  {
-    cveId: "CVE-2024-1874",
-    description:
-      "Medium-severity local vulnerability with limited impact.",
-    cvss: 4.3,
-    severity: "MEDIUM",
-    priority: "Low",
-    riskScore: 31,
-    confidence: 89,
-    attackVector: "LOCAL",
-    privilegesRequired: "HIGH",
-    userInteraction: "REQUIRED",
-    weaknessCount: 1,
-    referenceCount: 4,
-    published: "2024-04-03",
-  },
-];
-
+/* =========================================================
+   APPLICATION CONFIGURATION
+   ========================================================= */
 
 const navigation = [
   {
@@ -116,13 +57,16 @@ const navigation = [
   },
 ];
 
-
 const priorityColors = {
   High: "#ff4d67",
   Medium: "#f5c451",
   Low: "#31d598",
 };
 
+
+/* =========================================================
+   SMALL REUSABLE COMPONENTS
+   ========================================================= */
 
 function StatCard({ title, value, color }) {
   return (
@@ -138,23 +82,32 @@ function StatCard({ title, value, color }) {
 
 
 function PriorityBadge({ priority }) {
+  const safePriority = priority || "Unknown";
+
   return (
     <span
-      className={`priority-badge priority-${priority.toLowerCase()}`}
+      className={`priority-badge priority-${safePriority.toLowerCase()}`}
     >
-      {priority}
+      {safePriority}
     </span>
   );
 }
 
 
 function RiskScore({ score }) {
-  const color =
-    score >= 75
-      ? "#ff4d67"
-      : score >= 45
-      ? "#f5c451"
-      : "#31d598";
+  const numericScore = Number(score) || 0;
+  const safeScore = Math.min(
+    Math.max(numericScore, 0),
+    100
+  );
+
+  let color = "#31d598";
+
+  if (safeScore >= 75) {
+    color = "#ff4d67";
+  } else if (safeScore >= 45) {
+    color = "#f5c451";
+  }
 
   return (
     <div className="risk-score">
@@ -162,19 +115,107 @@ function RiskScore({ score }) {
         <div
           className="risk-fill"
           style={{
-            width: `${score}%`,
+            width: `${safeScore}%`,
             backgroundColor: color,
           }}
         />
       </div>
 
-      <strong style={{ color }}>{score}</strong>
+      <strong style={{ color }}>
+        {safeScore}
+      </strong>
     </div>
   );
 }
 
 
-function VulnerabilityTable({ data, onSelect }) {
+function LoadingScreen() {
+  return (
+    <section className="panel">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
+        <RefreshCw size={21} />
+
+        <div>
+          <h2>Loading vulnerability data</h2>
+
+          <p>
+            Reading processed NVD records from the
+            FastAPI backend.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function ErrorScreen({ message, onRetry }) {
+  return (
+    <section className="panel">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <AlertCircle
+          size={22}
+          color="#ff4d67"
+        />
+
+        <div>
+          <h2>Backend connection failed</h2>
+
+          <p>{message}</p>
+
+          <button
+            className="primary-button"
+            onClick={onRetry}
+          >
+            <RefreshCw size={15} />
+            Try Again
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function EmptyScreen() {
+  return (
+    <section className="panel">
+      <h2>No vulnerability records found</h2>
+
+      <p>
+        FastAPI returned an empty list. Check that
+        backend/data/processed_nvd_data.csv exists and
+        contains records.
+      </p>
+    </section>
+  );
+}
+
+
+/* =========================================================
+   VULNERABILITY TABLE
+   ========================================================= */
+
+function VulnerabilityTable({
+  data,
+  onSelect,
+}) {
+  if (!Array.isArray(data) || data.length === 0) {
+    return <EmptyScreen />;
+  }
+
   return (
     <div className="table-wrapper">
       <table>
@@ -197,21 +238,43 @@ function VulnerabilityTable({ data, onSelect }) {
               key={item.cveId}
               onClick={() => onSelect(item)}
             >
-              <td className="cve-id">{item.cveId}</td>
-              <td>{item.cvss.toFixed(1)}</td>
-              <td>{item.severity}</td>
-
-              <td>
-                <PriorityBadge priority={item.priority} />
+              <td className="cve-id">
+                {item.cveId || "Unknown"}
               </td>
 
               <td>
-                <RiskScore score={item.riskScore} />
+                {Number(item.cvss || 0).toFixed(1)}
               </td>
 
-              <td>{item.confidence}%</td>
-              <td>{item.attackVector}</td>
-              <td>{item.published}</td>
+              <td>
+                {item.severity || "UNKNOWN"}
+              </td>
+
+              <td>
+                <PriorityBadge
+                  priority={item.priority}
+                />
+              </td>
+
+              <td>
+                <RiskScore
+                  score={item.riskScore}
+                />
+              </td>
+
+              <td>
+                {item.confidence == null
+                  ? "Pending"
+                  : `${item.confidence}%`}
+              </td>
+
+              <td>
+                {item.attackVector || "UNKNOWN"}
+              </td>
+
+              <td>
+                {item.published || "Unknown"}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -221,89 +284,127 @@ function VulnerabilityTable({ data, onSelect }) {
 }
 
 
-function Dashboard({ data, stats, onSelect }) {
-  const high = data.filter(
+/* =========================================================
+   DASHBOARD PAGE
+   ========================================================= */
+
+function Dashboard({
+  data,
+  stats,
+  onSelect,
+}) {
+  const highCount = data.filter(
     (item) => item.priority === "High"
   ).length;
 
-  const medium = data.filter(
+  const mediumCount = data.filter(
     (item) => item.priority === "Medium"
   ).length;
 
-  const low = data.filter(
+  const lowCount = data.filter(
     (item) => item.priority === "Low"
   ).length;
 
-  const averageRisk = Math.round(
-    data.reduce(
-      (total, item) => total + item.riskScore,
-      0
-    ) / data.length
-  );
+  const calculatedAverageRisk =
+    data.length > 0
+      ? Math.round(
+          data.reduce(
+            (total, item) =>
+              total +
+              Number(item.riskScore || 0),
+            0
+          ) / data.length
+        )
+      : 0;
+
+  const total =
+    stats?.total_vulnerabilities ??
+    data.length;
+
+  const high =
+    stats?.high_priority ??
+    highCount;
+
+  const medium =
+    stats?.medium_priority ??
+    mediumCount;
+
+  const low =
+    stats?.low_priority ??
+    lowCount;
+
+  const averageRisk =
+    stats?.average_risk ??
+    calculatedAverageRisk;
 
   const priorityData = [
-    { name: "High", value: high },
-    { name: "Medium", value: medium },
-    { name: "Low", value: low },
+    {
+      name: "High",
+      value: highCount,
+    },
+    {
+      name: "Medium",
+      value: mediumCount,
+    },
+    {
+      name: "Low",
+      value: lowCount,
+    },
   ];
 
   const severityData = Object.entries(
-    data.reduce((result, item) => {
-      result[item.severity] =
-        (result[item.severity] || 0) + 1;
+    data.reduce((counts, item) => {
+      const severity =
+        item.severity || "UNKNOWN";
 
-      return result;
+      counts[severity] =
+        (counts[severity] || 0) + 1;
+
+      return counts;
     }, {})
   ).map(([name, value]) => ({
     name,
     value,
   }));
 
+  const highestRisk = [...data]
+    .sort(
+      (first, second) =>
+        Number(second.riskScore || 0) -
+        Number(first.riskScore || 0)
+    )
+    .slice(0, 10);
+
   return (
     <>
       <div className="stats-grid">
         <StatCard
-  title="Total Vulnerabilities"
-  value={
-    stats?.total_vulnerabilities ??
-    data.length
-  }
-  color="#41c7ff"
-/>
+          title="Total Vulnerabilities"
+          value={total}
+          color="#41c7ff"
+        />
 
         <StatCard
-  title="High Priority"
-  value={
-    stats?.high_priority ??
-    high
-  }
-  color="#ff4d67"
-/>
+          title="High Priority"
+          value={high}
+          color="#ff4d67"
+        />
 
         <StatCard
-  title="Medium Priority"
-  value={
-    stats?.medium_priority ??
-    medium
-  }
-  color="#f5c451"
-/>
+          title="Medium Priority"
+          value={medium}
+          color="#f5c451"
+        />
 
         <StatCard
-  title="Low Priority"
-  value={
-    stats?.low_priority ??
-    low
-  }
-  color="#31d598"
-/>
+          title="Low Priority"
+          value={low}
+          color="#31d598"
+        />
 
         <StatCard
-  title="Average Risk"
-  value={
-    stats?.average_risk ??
-    averageRisk
-  }
+  title="Average Risk (0-100)"
+  value={averageRisk}
   color="#a78bfa"
 />
       </div>
@@ -311,9 +412,16 @@ function Dashboard({ data, stats, onSelect }) {
       <div className="chart-grid">
         <section className="panel">
           <h2>Priority Distribution</h2>
-          <p>Machine-learning priority classifications</p>
 
-          <ResponsiveContainer width="100%" height={280}>
+          <p>
+            Priority classifications returned by the
+            vulnerability API
+          </p>
+
+          <ResponsiveContainer
+            width="100%"
+            height={280}
+          >
             <PieChart>
               <Pie
                 data={priorityData}
@@ -326,7 +434,9 @@ function Dashboard({ data, stats, onSelect }) {
                 {priorityData.map((item) => (
                   <Cell
                     key={item.name}
-                    fill={priorityColors[item.name]}
+                    fill={
+                      priorityColors[item.name]
+                    }
                   />
                 ))}
               </Pie>
@@ -338,9 +448,15 @@ function Dashboard({ data, stats, onSelect }) {
 
         <section className="panel">
           <h2>Severity Distribution</h2>
-          <p>Distribution of NVD CVSS severity levels</p>
 
-          <ResponsiveContainer width="100%" height={280}>
+          <p>
+            Distribution of NVD CVSS severity values
+          </p>
+
+          <ResponsiveContainer
+            width="100%"
+            height={280}
+          >
             <BarChart data={severityData}>
               <CartesianGrid
                 stroke="#1e3148"
@@ -369,21 +485,19 @@ function Dashboard({ data, stats, onSelect }) {
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>Highest-Risk Vulnerabilities</h2>
+            <h2>
+              Highest-Risk Vulnerabilities
+            </h2>
+
             <p>
-              Vulnerabilities ranked using predicted risk
-              scores
+              Real vulnerability records ranked by
+              current risk score
             </p>
           </div>
         </div>
 
         <VulnerabilityTable
-          data={[...data]
-            .sort(
-              (first, second) =>
-                second.riskScore - first.riskScore
-            )
-            .slice(0, 10)}
+          data={highestRisk}
           onSelect={onSelect}
         />
       </section>
@@ -392,22 +506,39 @@ function Dashboard({ data, stats, onSelect }) {
 }
 
 
-function VulnerabilitiesPage({ data, onSelect }) {
-  const [search, setSearch] = useState("");
-  const [priority, setPriority] = useState("All");
-  const [severity, setSeverity] = useState("All");
+/* =========================================================
+   VULNERABILITIES PAGE
+   ========================================================= */
+
+function VulnerabilitiesPage({
+  data,
+  onSelect,
+}) {
+  const [search, setSearch] =
+    useState("");
+
+  const [priority, setPriority] =
+    useState("All");
+
+  const [severity, setSeverity] =
+    useState("All");
 
   const filteredData = useMemo(() => {
     return data.filter((item) => {
-      const searchText = search.toLowerCase();
+      const searchText =
+        search.trim().toLowerCase();
+
+      const cveId = String(
+        item.cveId || ""
+      ).toLowerCase();
+
+      const description = String(
+        item.description || ""
+      ).toLowerCase();
 
       const matchesSearch =
-        item.cveId
-          .toLowerCase()
-          .includes(searchText) ||
-        item.description
-          .toLowerCase()
-          .includes(searchText);
+        cveId.includes(searchText) ||
+        description.includes(searchText);
 
       const matchesPriority =
         priority === "All" ||
@@ -423,7 +554,12 @@ function VulnerabilitiesPage({ data, onSelect }) {
         matchesSeverity
       );
     });
-  }, [search, priority, severity, data]);
+  }, [
+    search,
+    priority,
+    severity,
+    data,
+  ]);
 
   return (
     <section className="panel">
@@ -446,10 +582,21 @@ function VulnerabilitiesPage({ data, onSelect }) {
             setPriority(event.target.value)
           }
         >
-          <option>All</option>
-          <option>High</option>
-          <option>Medium</option>
-          <option>Low</option>
+          <option value="All">
+            All priorities
+          </option>
+
+          <option value="High">
+            High
+          </option>
+
+          <option value="Medium">
+            Medium
+          </option>
+
+          <option value="Low">
+            Low
+          </option>
         </select>
 
         <select
@@ -458,11 +605,29 @@ function VulnerabilitiesPage({ data, onSelect }) {
             setSeverity(event.target.value)
           }
         >
-          <option>All</option>
-          <option>CRITICAL</option>
-          <option>HIGH</option>
-          <option>MEDIUM</option>
-          <option>LOW</option>
+          <option value="All">
+            All severities
+          </option>
+
+          <option value="CRITICAL">
+            Critical
+          </option>
+
+          <option value="HIGH">
+            High
+          </option>
+
+          <option value="MEDIUM">
+            Medium
+          </option>
+
+          <option value="LOW">
+            Low
+          </option>
+
+          <option value="UNKNOWN">
+            Unknown
+          </option>
         </select>
       </div>
 
@@ -479,45 +644,97 @@ function VulnerabilitiesPage({ data, onSelect }) {
 }
 
 
+/* =========================================================
+   VULNERABILITY DETAILS PAGE
+   ========================================================= */
+
 function VulnerabilityDetails({
   vulnerability,
   onBack,
 }) {
   if (!vulnerability) {
-    return null;
+    return (
+      <section className="panel">
+        <h2>No vulnerability selected</h2>
+
+        <button
+          className="secondary-button"
+          onClick={onBack}
+        >
+          Back to vulnerabilities
+        </button>
+      </section>
+    );
   }
 
   const reasons = [];
+  const cvss = Number(
+    vulnerability.cvss || 0
+  );
 
-  if (vulnerability.cvss >= 9) {
-    reasons.push("Critical CVSS base score");
-  } else if (vulnerability.cvss >= 7) {
-    reasons.push("High CVSS base score");
+  if (cvss >= 9) {
+    reasons.push(
+      "Critical CVSS base score"
+    );
+  } else if (cvss >= 7) {
+    reasons.push(
+      "High CVSS base score"
+    );
   }
 
-  if (vulnerability.attackVector === "NETWORK") {
+  if (
+    vulnerability.attackVector === "NETWORK"
+  ) {
     reasons.push(
       "Potential exploitation through a network"
     );
   }
 
   if (
-    vulnerability.privilegesRequired === "NONE"
+    vulnerability.attackComplexity === "LOW"
+  ) {
+    reasons.push(
+      "Low attack complexity"
+    );
+  }
+
+  if (
+    vulnerability.privilegesRequired ===
+    "NONE"
   ) {
     reasons.push(
       "No existing attacker privileges required"
     );
   }
 
-  if (vulnerability.userInteraction === "NONE") {
+  if (
+    vulnerability.userInteraction ===
+    "NONE"
+  ) {
     reasons.push(
-      "No victim user interaction required"
+      "No victim interaction required"
     );
   }
 
-  if (vulnerability.referenceCount >= 10) {
+  if (
+    Number(
+      vulnerability.referenceCount || 0
+    ) >= 10
+  ) {
     reasons.push(
-      "Large number of public vulnerability references"
+      "Large number of public references"
+    );
+  }
+
+  if (vulnerability.hasCisaKev) {
+    reasons.push(
+      "Listed in the CISA KEV catalog"
+    );
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(
+      "No major high-risk technical indicators were identified"
     );
   }
 
@@ -539,92 +756,153 @@ function VulnerabilityDetails({
               </span>
 
               <h2>
-                {vulnerability.severity} vulnerability
+                {vulnerability.severity ||
+                  "UNKNOWN"}{" "}
+                vulnerability
               </h2>
             </div>
 
             <div className="score-circle">
               <strong>
-                {vulnerability.riskScore}
+                {Math.min(
+                  Number(
+                    vulnerability.riskScore ||
+                      0
+                  ),
+                  100
+                )}
               </strong>
+
               <span>Risk</span>
             </div>
           </div>
 
           <p className="description">
-            {vulnerability.description}
+            {vulnerability.description ||
+              "No description is available."}
           </p>
 
           <div className="details-grid">
             <div>
               <span>CVSS Score</span>
-              <strong>{vulnerability.cvss}</strong>
+              <strong>
+                {cvss.toFixed(1)}
+              </strong>
             </div>
 
             <div>
-              <span>Predicted Priority</span>
+              <span>Priority</span>
+
               <PriorityBadge
-                priority={vulnerability.priority}
+                priority={
+                  vulnerability.priority
+                }
               />
             </div>
 
             <div>
               <span>Model Confidence</span>
+
               <strong>
-                {vulnerability.confidence}%
+                {vulnerability.confidence ==
+                null
+                  ? "Pending"
+                  : `${vulnerability.confidence}%`}
               </strong>
             </div>
 
             <div>
               <span>Attack Vector</span>
               <strong>
-                {vulnerability.attackVector}
+                {vulnerability.attackVector ||
+                  "UNKNOWN"}
               </strong>
             </div>
 
             <div>
-              <span>Privileges Required</span>
+              <span>
+                Attack Complexity
+              </span>
+
               <strong>
-                {vulnerability.privilegesRequired}
+                {vulnerability.attackComplexity ||
+                  "UNKNOWN"}
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                Privileges Required
+              </span>
+
+              <strong>
+                {vulnerability.privilegesRequired ||
+                  "UNKNOWN"}
               </strong>
             </div>
 
             <div>
               <span>User Interaction</span>
+
               <strong>
-                {vulnerability.userInteraction}
+                {vulnerability.userInteraction ||
+                  "UNKNOWN"}
               </strong>
             </div>
 
             <div>
               <span>Weakness Count</span>
+
               <strong>
-                {vulnerability.weaknessCount}
+                {Number(
+                  vulnerability.weaknessCount ||
+                    0
+                )}
               </strong>
             </div>
 
             <div>
               <span>Reference Count</span>
+
               <strong>
-                {vulnerability.referenceCount}
+                {Number(
+                  vulnerability.referenceCount ||
+                    0
+                )}
+              </strong>
+            </div>
+
+            <div>
+              <span>CISA KEV</span>
+
+              <strong>
+                {vulnerability.hasCisaKev
+                  ? "Yes"
+                  : "No"}
               </strong>
             </div>
 
             <div>
               <span>Published</span>
               <strong>
-                {vulnerability.published}
+                {vulnerability.published ||
+                  "Unknown"}
               </strong>
             </div>
           </div>
         </section>
 
         <aside className="panel">
-          <h2>Why was this prioritized?</h2>
+          <h2>
+            Why was this prioritized?
+          </h2>
 
           <div className="reason-list">
             {reasons.map((reason) => (
-              <div className="reason" key={reason}>
+              <div
+                className="reason"
+                key={reason}
+              >
                 <span>✓</span>
                 {reason}
               </div>
@@ -632,8 +910,9 @@ function VulnerabilityDetails({
           </div>
 
           <p className="explanation-note">
-            These security characteristics contributed
-            to the machine-learning prediction.
+            The explanation is based on the
+            vulnerability properties supplied by
+            the FastAPI backend.
           </p>
         </aside>
       </div>
@@ -642,55 +921,116 @@ function VulnerabilityDetails({
 }
 
 
-function AnalyticsPage() {
+/* =========================================================
+   ANALYTICS PAGE
+   ========================================================= */
+
+function AnalyticsPage({ data }) {
+  const priorityData = [
+    {
+      name: "High",
+      value: data.filter(
+        (item) =>
+          item.priority === "High"
+      ).length,
+    },
+    {
+      name: "Medium",
+      value: data.filter(
+        (item) =>
+          item.priority === "Medium"
+      ).length,
+    },
+    {
+      name: "Low",
+      value: data.filter(
+        (item) =>
+          item.priority === "Low"
+      ).length,
+    },
+  ];
+
   return (
     <>
       <div className="analytics-metrics">
         <StatCard
-          title="Accuracy"
-          value="96.57%"
+          title="Records Loaded"
+          value={data.length}
           color="#41c7ff"
         />
 
         <StatCard
-          title="Precision"
-          value="96.70%"
+          title="Model"
+          value="Random Forest"
           color="#31d598"
         />
 
         <StatCard
-          title="Recall"
-          value="96.57%"
+          title="Target Classes"
+          value="3"
           color="#f5c451"
         />
 
         <StatCard
-          title="F1 Score"
-          value="96.59%"
+          title="Data Source"
+          value="NVD"
           color="#a78bfa"
         />
       </div>
 
       <div className="chart-grid">
-        <section className="panel analytics-placeholder">
-          <BarChart3 size={36} />
-
-          <h2>Feature Importance</h2>
+        <section className="panel">
+          <h2>
+            Priority Distribution
+          </h2>
 
           <p>
-            This section will retrieve Random Forest
-            feature importance values from FastAPI.
+            Distribution calculated from the real
+            vulnerability API response
           </p>
+
+          <ResponsiveContainer
+            width="100%"
+            height={280}
+          >
+            <BarChart data={priorityData}>
+              <CartesianGrid
+                stroke="#1e3148"
+                vertical={false}
+              />
+
+              <XAxis
+                dataKey="name"
+                stroke="#8193aa"
+              />
+
+              <YAxis stroke="#8193aa" />
+              <Tooltip />
+
+              <Bar dataKey="value">
+                {priorityData.map((item) => (
+                  <Cell
+                    key={item.name}
+                    fill={
+                      priorityColors[item.name]
+                    }
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </section>
 
         <section className="panel analytics-placeholder">
-          <Activity size={36} />
+          <BarChart3 size={36} />
 
-          <h2>Confusion Matrix</h2>
+          <h2>Model Evaluation</h2>
 
           <p>
-            This section will retrieve model evaluation
-            results from FastAPI.
+            Accuracy, precision, recall, F1-score,
+            feature importance, and the confusion
+            matrix will be loaded through a future
+            analytics endpoint.
           </p>
         </section>
       </div>
@@ -699,19 +1039,36 @@ function AnalyticsPage() {
 }
 
 
-function SettingsPage() {
+/* =========================================================
+   SETTINGS PAGE
+   ========================================================= */
+
+function SettingsPage({
+  onRefresh,
+  loading,
+  recordCount,
+  apiConnected,
+}) {
   return (
     <div className="settings-grid">
       <section className="panel">
-        <h2>NVD Integration</h2>
+        <h2>FastAPI Connection</h2>
 
-        <p className="connected">
-          ● API connection configured
+        <p
+          className={
+            apiConnected
+              ? "connected"
+              : ""
+          }
+        >
+          {apiConnected
+            ? "● Backend connected"
+            : "● Backend disconnected"}
         </p>
 
         <p>
-          The NVD key will be stored securely by the
-          FastAPI backend.
+          Vulnerability records are loaded from the
+          processed NVD dataset through FastAPI.
         </p>
       </section>
 
@@ -721,12 +1078,21 @@ function SettingsPage() {
         <dl>
           <div>
             <dt>Algorithm</dt>
-            <dd>Random Forest Classifier</dd>
+            <dd>
+              Random Forest Classifier
+            </dd>
+          </div>
+
+          <div>
+            <dt>Loaded API Records</dt>
+            <dd>{recordCount}</dd>
           </div>
 
           <div>
             <dt>Status</dt>
-            <dd className="connected">Ready</dd>
+            <dd className="connected">
+              Ready
+            </dd>
           </div>
         </dl>
       </section>
@@ -735,13 +1101,20 @@ function SettingsPage() {
         <h2>Data Refresh</h2>
 
         <p>
-          Fetch recent NVD data and recalculate
-          priorities.
+          Reload dashboard statistics and
+          vulnerabilities from FastAPI.
         </p>
 
-        <button className="primary-button">
+        <button
+          className="primary-button"
+          onClick={onRefresh}
+          disabled={loading}
+        >
           <RefreshCw size={15} />
-          Refresh NVD Data
+
+          {loading
+            ? "Refreshing..."
+            : "Refresh API Data"}
         </button>
       </section>
     </div>
@@ -749,85 +1122,163 @@ function SettingsPage() {
 }
 
 
+/* =========================================================
+   MAIN APPLICATION
+   ========================================================= */
+
 export default function App() {
   const [activePage, setActivePage] =
     useState("dashboard");
-
-
-  const [dashboardStats, setDashboardStats] =
-  useState(null);
-
-useEffect(() => {
-  getDashboard()
-    .then((data) => {
-      console.log("Dashboard Data:", data);
-      setDashboardStats(data);
-    })
-    .catch((error) => {
-      console.error(error);
-    });
-}, []);
-
 
   const [
     selectedVulnerability,
     setSelectedVulnerability,
   ] = useState(null);
 
+  const [
+    dashboardStats,
+    setDashboardStats,
+  ] = useState(null);
+
+  const [
+    vulnerabilitiesData,
+    setVulnerabilitiesData,
+  ] = useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [apiError, setApiError] =
+    useState("");
+
+  async function loadApplicationData() {
+    try {
+      setLoading(true);
+      setApiError("");
+
+      const [
+        dashboardResponse,
+        vulnerabilitiesResponse,
+      ] = await Promise.all([
+        getDashboard(),
+        getVulnerabilities(),
+      ]);
+
+      if (
+        !Array.isArray(
+          vulnerabilitiesResponse
+        )
+      ) {
+        throw new Error(
+          "The vulnerabilities endpoint did not return an array."
+        );
+      }
+
+      setDashboardStats(
+        dashboardResponse
+      );
+
+      setVulnerabilitiesData(
+        vulnerabilitiesResponse
+      );
+    } catch (error) {
+      console.error(
+        "Backend connection error:",
+        error
+      );
+
+      setDashboardStats(null);
+      setVulnerabilitiesData([]);
+
+      setApiError(
+        error.message ||
+          "The FastAPI backend could not be reached."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadApplicationData();
+  }, []);
+
   function openVulnerability(item) {
     setSelectedVulnerability(item);
     setActivePage("details");
+  }
+
+  function closeVulnerability() {
+    setSelectedVulnerability(null);
+    setActivePage("vulnerabilities");
   }
 
   function renderCurrentPage() {
     if (activePage === "details") {
       return (
         <VulnerabilityDetails
-          vulnerability={selectedVulnerability}
-          onBack={() =>
-            setActivePage("vulnerabilities")
+          vulnerability={
+            selectedVulnerability
           }
+          onBack={closeVulnerability}
         />
       );
     }
 
-    if (activePage === "vulnerabilities") {
+    if (
+      activePage === "vulnerabilities"
+    ) {
       return (
         <VulnerabilitiesPage
-          data={vulnerabilities}
+          data={vulnerabilitiesData}
           onSelect={openVulnerability}
         />
       );
     }
 
     if (activePage === "analytics") {
-      return <AnalyticsPage />;
+      return (
+        <AnalyticsPage
+          data={vulnerabilitiesData}
+        />
+      );
     }
 
     if (activePage === "settings") {
-      return <SettingsPage />;
+      return (
+        <SettingsPage
+          onRefresh={
+            loadApplicationData
+          }
+          loading={loading}
+          recordCount={
+            vulnerabilitiesData.length
+          }
+          apiConnected={!apiError}
+        />
+      );
     }
 
     return (
-  <Dashboard
-    data={vulnerabilities}
-    stats={dashboardStats}
-    onSelect={openVulnerability}
-  />
-);
+      <Dashboard
+        data={vulnerabilitiesData}
+        stats={dashboardStats}
+        onSelect={openVulnerability}
+      />
+    );
   }
 
   const pageTitle =
     activePage === "details"
       ? "Vulnerability Details"
       : navigation.find(
-          (item) => item.id === activePage
+          (item) =>
+            item.id === activePage
         )?.label || "Dashboard";
 
   return (
-  <div className="app-layout">
-
-    <aside className="sidebar">
+    <div className="app-layout">
+      <aside className="sidebar">
         <div className="brand">
           <ShieldAlert size={27} />
 
@@ -841,22 +1292,25 @@ useEffect(() => {
           {navigation.map((item) => {
             const Icon = item.icon;
 
-            const active =
+            const navigationIsActive =
               activePage === item.id ||
-              (activePage === "details" &&
-                item.id === "vulnerabilities");
+              (
+                activePage === "details" &&
+                item.id ===
+                  "vulnerabilities"
+              );
 
             return (
               <button
                 key={item.id}
                 className={
-                  active
+                  navigationIsActive
                     ? "nav-button active"
                     : "nav-button"
                 }
-                onClick={() =>
-                  setActivePage(item.id)
-                }
+                onClick={() => {
+                  setActivePage(item.id);
+                }}
               >
                 <Icon size={17} />
                 {item.label}
@@ -869,8 +1323,13 @@ useEffect(() => {
           <Activity size={16} />
 
           <div>
-            <strong>NVD API</strong>
-            <span>Backend pending</span>
+            <strong>FastAPI</strong>
+
+            <span>
+              {apiError
+                ? "Disconnected"
+                : "Connected"}
+            </span>
           </div>
         </div>
       </aside>
@@ -881,19 +1340,50 @@ useEffect(() => {
             <h1>{pageTitle}</h1>
 
             <p>
-              Machine Learning-Based Vulnerability
-              Prioritization
+              Machine Learning-Based
+              Vulnerability Prioritization
             </p>
           </div>
 
-          <span className="online-indicator">
-            ● FRONTEND ONLINE
+          <span
+            className="online-indicator"
+            style={{
+              color: apiError
+                ? "#ff4d67"
+                : "#31d598",
+            }}
+          >
+            {apiError
+              ? "● BACKEND OFFLINE"
+              : "● SYSTEM ONLINE"}
           </span>
         </header>
 
         <div className="page">
-  {renderCurrentPage()}
-</div>
+          {loading && (
+            <LoadingScreen />
+          )}
+
+          {!loading && apiError && (
+            <ErrorScreen
+              message={apiError}
+              onRetry={
+                loadApplicationData
+              }
+            />
+          )}
+
+          {!loading &&
+            !apiError &&
+            vulnerabilitiesData.length ===
+              0 && <EmptyScreen />}
+
+          {!loading &&
+            !apiError &&
+            vulnerabilitiesData.length >
+              0 &&
+            renderCurrentPage()}
+        </div>
       </main>
     </div>
   );
