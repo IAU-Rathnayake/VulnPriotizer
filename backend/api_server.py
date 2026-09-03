@@ -1,4 +1,10 @@
 from pathlib import Path
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    precision_recall_fscore_support,
+)
+
 
 import joblib
 import pandas as pd
@@ -26,6 +32,11 @@ MODEL_PATH = (
     / "vulnprioritizer_model.joblib"
 )
 
+TEST_PREDICTIONS_PATH = (
+    BASE_DIR
+    / "reports"
+    / "test_predictions.csv"
+)
 
 # =========================================================
 # FASTAPI APPLICATION
@@ -627,4 +638,75 @@ def model_info():
         "feature_importance": (
             importance_rows
         ),
+    }
+@app.get("/analytics")
+def analytics():
+
+    df = pd.read_csv(
+        TEST_PREDICTIONS_PATH
+    )
+
+    y_true = (
+        df["priority"]
+        .astype(str)
+    )
+
+    y_pred = (
+        df["predicted_priority"]
+        .astype(str)
+    )
+
+    labels = [
+        "High",
+        "Medium",
+        "Low",
+    ]
+
+    accuracy = accuracy_score(
+        y_true,
+        y_pred
+    )
+
+    precision, recall, f1, _ = (
+        precision_recall_fscore_support(
+            y_true,
+            y_pred,
+            average="weighted",
+            zero_division=0
+        )
+    )
+
+    matrix = confusion_matrix(
+        y_true,
+        y_pred,
+        labels=labels
+    )
+
+    return {
+        "accuracy": round(
+            float(accuracy),
+            4
+        ),
+
+        "precision": round(
+            float(precision),
+            4
+        ),
+
+        "recall": round(
+            float(recall),
+            4
+        ),
+
+        "f1": round(
+            float(f1),
+            4
+        ),
+
+        "labels": labels,
+
+        "test_records": len(df),
+
+        "confusion_matrix":
+            matrix.tolist()
     }
