@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   getDashboard,
+  getModelInfo,
   getVulnerabilities,
 } from "./services/api";
 
@@ -925,30 +926,54 @@ function VulnerabilityDetails({
    ANALYTICS PAGE
    ========================================================= */
 
-function AnalyticsPage({ data }) {
-  const priorityData = [
-    {
-      name: "High",
-      value: data.filter(
-        (item) =>
-          item.priority === "High"
-      ).length,
-    },
-    {
-      name: "Medium",
-      value: data.filter(
-        (item) =>
-          item.priority === "Medium"
-      ).length,
-    },
-    {
-      name: "Low",
-      value: data.filter(
-        (item) =>
-          item.priority === "Low"
-      ).length,
-    },
-  ];
+function AnalyticsPage({
+  data,
+  modelInfo,
+}) {
+  if (!modelInfo) {
+    return (
+      <section className="panel">
+        <h2>
+          Model information unavailable
+        </h2>
+
+        <p>
+          FastAPI did not return model
+          information.
+        </p>
+      </section>
+    );
+  }
+
+  const featureImportance =
+    Array.isArray(
+      modelInfo.feature_importance
+    )
+      ? modelInfo.feature_importance
+      : [];
+
+  const topFeatures =
+    featureImportance.slice(0, 10);
+
+  const chartData = topFeatures
+    .map((item) => ({
+      name: item.feature,
+      importance: Number(
+        (
+          Number(item.importance) * 100
+        ).toFixed(2)
+      ),
+    }))
+    .reverse();
+
+  const classNames =
+    Array.isArray(
+      modelInfo.model_classes
+    )
+      ? modelInfo.model_classes.join(
+          ", "
+        )
+      : "Unavailable";
 
   return (
     <>
@@ -961,19 +986,28 @@ function AnalyticsPage({ data }) {
 
         <StatCard
           title="Model"
-          value="Random Forest"
+          value={
+            modelInfo.algorithm ||
+            "Random Forest"
+          }
           color="#31d598"
         />
 
         <StatCard
-          title="Target Classes"
-          value="3"
+          title="Decision Trees"
+          value={
+            modelInfo.number_of_trees ??
+            "Unknown"
+          }
           color="#f5c451"
         />
 
         <StatCard
-          title="Data Source"
-          value="NVD"
+          title="Model Features"
+          value={
+            modelInfo.number_of_features ??
+            "Unknown"
+          }
           color="#a78bfa"
         />
       </div>
@@ -981,59 +1015,216 @@ function AnalyticsPage({ data }) {
       <div className="chart-grid">
         <section className="panel">
           <h2>
-            Priority Distribution
+            Top Feature Importances
           </h2>
 
           <p>
-            Distribution calculated from the real
-            vulnerability API response
+            Relative feature importance values
+            from the saved Random Forest model
           </p>
 
-          <ResponsiveContainer
-            width="100%"
-            height={280}
-          >
-            <BarChart data={priorityData}>
-              <CartesianGrid
-                stroke="#1e3148"
-                vertical={false}
-              />
+          {chartData.length > 0 ? (
+            <ResponsiveContainer
+              width="100%"
+              height={420}
+            >
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{
+                  top: 10,
+                  right: 30,
+                  left: 80,
+                  bottom: 10,
+                }}
+              >
+                <CartesianGrid
+                  stroke="#1e3148"
+                  horizontal={false}
+                />
 
-              <XAxis
-                dataKey="name"
-                stroke="#8193aa"
-              />
+                <XAxis
+                  type="number"
+                  stroke="#8193aa"
+                  unit="%"
+                />
 
-              <YAxis stroke="#8193aa" />
-              <Tooltip />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  stroke="#8193aa"
+                  width={170}
+                  tick={{
+                    fontSize: 10,
+                  }}
+                />
 
-              <Bar dataKey="value">
-                {priorityData.map((item) => (
-                  <Cell
-                    key={item.name}
-                    fill={
-                      priorityColors[item.name]
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                <Tooltip
+                  formatter={(value) => [
+                    `${value}%`,
+                    "Importance",
+                  ]}
+                />
+
+                <Bar
+                  dataKey="importance"
+                  fill="#41c7ff"
+                  radius={[0, 5, 5, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p>
+              No feature importance values
+              were returned.
+            </p>
+          )}
         </section>
 
-        <section className="panel analytics-placeholder">
-          <BarChart3 size={36} />
-
-          <h2>Model Evaluation</h2>
+        <section className="panel">
+          <h2>Model Information</h2>
 
           <p>
-            Accuracy, precision, recall, F1-score,
-            feature importance, and the confusion
-            matrix will be loaded through a future
-            analytics endpoint.
+            Technical details loaded directly
+            from the saved model
           </p>
+
+          <div className="details-grid">
+            <div>
+              <span>Algorithm</span>
+
+              <strong>
+                {modelInfo.algorithm ||
+                  "Unknown"}
+              </strong>
+            </div>
+
+            <div>
+              <span>Number of Trees</span>
+
+              <strong>
+                {modelInfo.number_of_trees ??
+                  "Unknown"}
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                Number of Features
+              </span>
+
+              <strong>
+                {modelInfo.number_of_features ??
+                  "Unknown"}
+              </strong>
+            </div>
+
+            <div>
+              <span>Target Classes</span>
+
+              <strong>
+                {classNames}
+              </strong>
+            </div>
+
+            <div>
+              <span>Dataset Records</span>
+
+              <strong>
+                {data.length}
+              </strong>
+            </div>
+
+            <div>
+              <span>Model Status</span>
+
+              <strong
+                className="connected"
+              >
+                Loaded
+              </strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "20px",
+            }}
+          >
+            <h2>
+              Interpretation Note
+            </h2>
+
+            <p>
+              Feature importance describes
+              which inputs the fitted Random
+              Forest used most when making
+              splits. A higher value means the
+              model relied more heavily on that
+              feature. Feature importance does
+              not prove that a feature causes a
+              vulnerability to receive a
+              particular priority.
+            </p>
+          </div>
         </section>
       </div>
+
+      <section className="panel">
+        <h2>
+          Complete Feature Importance Table
+        </h2>
+
+        <p>
+          All model features ordered from
+          highest to lowest importance
+        </p>
+
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Feature</th>
+                <th>Importance</th>
+                <th>Percentage</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {featureImportance.map(
+                (item, index) => {
+                  const importance =
+                    Number(
+                      item.importance || 0
+                    );
+
+                  return (
+                    <tr key={item.feature}>
+                      <td>{index + 1}</td>
+
+                      <td className="cve-id">
+                        {item.feature}
+                      </td>
+
+                      <td>
+                        {importance.toFixed(6)}
+                      </td>
+
+                      <td>
+                        {(
+                          importance * 100
+                        ).toFixed(2)}
+                        %
+                      </td>
+                    </tr>
+                  );
+                }
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }
@@ -1145,6 +1336,11 @@ export default function App() {
     setVulnerabilitiesData,
   ] = useState([]);
 
+  const [
+  modelInfo,
+  setModelInfo,
+] = useState(null); 
+  
   const [loading, setLoading] =
     useState(true);
 
@@ -1157,12 +1353,14 @@ export default function App() {
       setApiError("");
 
       const [
-        dashboardResponse,
-        vulnerabilitiesResponse,
-      ] = await Promise.all([
-        getDashboard(),
-        getVulnerabilities(),
-      ]);
+  dashboardResponse,
+  vulnerabilitiesResponse,
+  modelInfoResponse,
+] = await Promise.all([
+  getDashboard(),
+  getVulnerabilities(),
+  getModelInfo(),
+]);
 
       if (
         !Array.isArray(
@@ -1181,6 +1379,11 @@ export default function App() {
       setVulnerabilitiesData(
         vulnerabilitiesResponse
       );
+
+      setModelInfo(
+  modelInfoResponse
+);
+
     } catch (error) {
       console.error(
         "Backend connection error:",
@@ -1189,6 +1392,7 @@ export default function App() {
 
       setDashboardStats(null);
       setVulnerabilitiesData([]);
+      setModelInfo(null);
 
       setApiError(
         error.message ||
@@ -1237,12 +1441,13 @@ export default function App() {
     }
 
     if (activePage === "analytics") {
-      return (
-        <AnalyticsPage
-          data={vulnerabilitiesData}
-        />
-      );
-    }
+  return (
+    <AnalyticsPage
+      data={vulnerabilitiesData}
+      modelInfo={modelInfo}
+    />
+  );
+}
 
     if (activePage === "settings") {
       return (
