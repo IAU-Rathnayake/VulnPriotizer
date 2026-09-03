@@ -4,6 +4,7 @@ import {
   getDashboard,
   getModelInfo,
   getVulnerabilities,
+  getAnalytics
 } from "./services/api";
 
 import {
@@ -929,6 +930,7 @@ function VulnerabilityDetails({
 function AnalyticsPage({
   data,
   modelInfo,
+  analyticsData,
 }) {
   if (!modelInfo) {
     return (
@@ -1010,6 +1012,31 @@ function AnalyticsPage({
           }
           color="#a78bfa"
         />
+
+        {analyticsData && (
+          <>
+            <StatCard
+              title="Accuracy"
+              value={`${(analyticsData.accuracy * 100).toFixed(1)}%`}
+              color="#31d598"
+            />
+            <StatCard
+              title="Precision"
+              value={`${(analyticsData.precision * 100).toFixed(1)}%`}
+              color="#41c7ff"
+            />
+            <StatCard
+              title="Recall"
+              value={`${(analyticsData.recall * 100).toFixed(1)}%`}
+              color="#f5c451"
+            />
+            <StatCard
+              title="F1 Score"
+              value={`${(analyticsData.f1 * 100).toFixed(1)}%`}
+              color="#a78bfa"
+            />
+          </>
+        )}
       </div>
 
       <div className="chart-grid">
@@ -1337,6 +1364,11 @@ export default function App() {
   ] = useState([]);
 
   const [
+  analyticsData,
+  setAnalyticsData,
+] = useState(null);
+
+  const [
   modelInfo,
   setModelInfo,
 ] = useState(null); 
@@ -1356,10 +1388,12 @@ export default function App() {
   dashboardResponse,
   vulnerabilitiesResponse,
   modelInfoResponse,
+  analyticsResponse, 
 ] = await Promise.all([
   getDashboard(),
   getVulnerabilities(),
   getModelInfo(),
+  getAnalytics()
 ]);
 
       if (
@@ -1381,8 +1415,12 @@ export default function App() {
       );
 
       setModelInfo(
-  modelInfoResponse
-);
+        modelInfoResponse
+      );
+
+      setAnalyticsData(
+        analyticsResponse
+      );
 
     } catch (error) {
       console.error(
@@ -1445,6 +1483,7 @@ export default function App() {
     <AnalyticsPage
       data={vulnerabilitiesData}
       modelInfo={modelInfo}
+      analyticsData={analyticsData}
     />
   );
 }

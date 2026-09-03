@@ -47,3 +47,7 @@ export function getVulnerabilities() {
 export function getModelInfo() {
   return request("/model-info");
 }
+
+export function getAnalytics() {
+  return request("/analytics");
+}
